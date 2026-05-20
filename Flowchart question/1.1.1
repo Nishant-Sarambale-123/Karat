@@ -1,0 +1,291 @@
+https://private-user-images.githubusercontent.com/123072381/594189647-26218d16-01bb-441d-a3b0-78b19d581d8a.png?jwt=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NzkyNjAxNTMsIm5iZiI6MTc3OTI1OTg1MywicGF0aCI6Ii8xMjMwNzIzODEvNTk0MTg5NjQ3LTI2MjE4ZDE2LTAxYmItNDQxZC1hM2IwLTc4YjE5ZDU4MWQ4YS5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjYwNTIwJTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MDUyMFQwNjUwNTNaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT00MjhmZTRhZjFiYTczNjNhOTdiMWU1MTRlZDRmOGNiM2U3MTY3YTU1MDZkNzRmNzAyZDM1ZGVhNDViNGVlMTNlJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZyZXNwb25zZS1jb250ZW50LXR5cGU9aW1hZ2UlMkZwbmcifQ.3FC0haM_LCRCAOMuH_B0dJ-jBXG5dBi0kLWE69sVMKk
+Here’s a **structured, interview-ready answer (same style as your payment example)** based on the diagram and given data:
+
+***
+
+# 🚨 Key Issues & Solutions – Webhook Processing System
+
+***
+
+## 🚨 1. Webhook Processing Bottleneck (Under-Provisioned Service)
+
+### **Issue**
+
+* **150 Git repositories** sending webhook events
+* Only **2 webhook replicas** handling all requests
+* Result:
+  * High request rate overwhelms service
+  * Increased latency and dropped/delayed events
+
+✅ **Problem:** Ingestion layer cannot handle incoming traffic (producer > intake capacity)
+
+### ✅ **Solution**
+
+* Scale webhook service horizontally
+* Use **Kubernetes HPA** based on CPU / request rate
+
+```yaml
+minReplicas: 3
+maxReplicas: 20
+metrics:
+  - cpuUtilization: 70%
+```
+
+* Add **stateless webhook handlers** for easy scaling
+* Use **load balancing across replicas**
+
+✅ **Benefit:** Stable ingestion even during traffic bursts
+
+***
+
+## 🚨 2. Job Queue Backlog (100 Pending Jobs)
+
+### **Issue**
+
+* **100 jobs pending** in queue
+* Indicates:
+  * Workers too few OR
+  * Jobs too slow OR
+  * Downstream bottleneck (DB)
+
+✅ **Problem:** Consumer side cannot keep up with producer rate
+
+### ✅ **Solution**
+
+* Scale worker nodes dynamically
+* Use **queue-length-based autoscaling**
+
+Example:
+
+* 100 jobs → scale workers from **2 → 10+**
+
+* Optimize jobs:
+  * Break large jobs into smaller tasks
+  * Parallelize execution
+
+✅ **Benefit:** Reduced queue latency and faster job completion
+
+***
+
+## 🚨 3. Missing / Weak Queue Decoupling
+
+### **Issue**
+
+* Flow appears tightly coupled:  
+  `Webhook → Direct Processing / DB → Job`
+* No clear durable buffering mechanism
+
+✅ **Problem:** Spikes directly impact system stability
+
+### ✅ **Solution**
+
+* Introduce **durable message queue**:
+  * Kafka / RabbitMQ / AWS SQS
+
+New flow:
+
+```
+Webhook → Queue → Workers → DB
+```
+
+* Enable:
+  * Retry mechanism
+  * Dead-letter queues
+  * Acknowledgements
+
+✅ **Benefit:** Smooth traffic spikes + fault tolerance
+
+***
+
+## 🚨 4. Database Bottleneck (50 GB Data Size)
+
+### **Issue**
+
+* Database size: **50 GB**
+* Leads to:
+  * Slow queries
+  * High I/O latency
+  * Lock contention
+* Shared across webhook + workers
+
+✅ **Problem:** DB becomes central bottleneck
+
+### ✅ **Solution**
+
+* Optimize database:
+  * Add indexes on frequently used queries
+  * Remove/archieve old records
+  * Partition tables (by repo/date)
+
+* Scale DB:
+  * Add **read replicas**
+  * Offload read-heavy tasks
+
+* Introduce **caching layer (Redis)**
+
+✅ **Benefit:** Faster queries, reduced contention
+
+***
+
+## 🚨 5. No Horizontal Scaling Strategy
+
+### **Issue**
+
+* Fixed replica counts (Webhook = 2)
+* No autoscaling
+
+✅ **Problem:** System cannot handle spikes (e.g., multiple PRs/commits)
+
+### ✅ **Solution**
+
+* Enable autoscaling everywhere:
+  * Webhooks → HPA (CPU / RPS)
+  * Workers → based on queue depth
+  * DB → read replicas
+
+✅ **Benefit:** Elastic system that adapts to load
+
+***
+
+## 🚨 6. Tight Coupling Between Components
+
+### **Issue**
+
+* Strong dependency on DB in every step
+* If DB slows → entire pipeline slows
+
+✅ **Problem:** Lack of resilience
+
+### ✅ **Solution**
+
+* Decouple using:
+  * Message queues
+  * Event-driven architecture
+
+* Make services:
+  * Independent
+  * Retry-capable
+
+✅ **Benefit:** Failures isolated, system remains stable
+
+***
+
+## 🚨 7. No Backpressure or Rate Limiting
+
+### **Issue**
+
+* 150 repos → burst traffic (CI/CD triggers)
+* No mechanism to control inflow
+
+✅ **Problem:** System overload during spikes
+
+### ✅ **Solution**
+
+* Implement:
+  * Rate limiting per repo
+  * API gateway throttling
+  * Queue-based buffering
+
+✅ **Benefit:** Prevents cascading failures
+
+***
+
+## 🚨 8. No Caching Layer
+
+### **Issue**
+
+* Repeated DB queries for:
+  * Repo metadata
+  * Job status
+
+✅ **Problem:** Unnecessary DB load
+
+### ✅ **Solution**
+
+* Add **Redis / Memcached**
+* Cache:
+  * Frequently requested data
+  * Intermediate job results
+
+✅ **Benefit:** Lower latency + reduced DB stress
+
+***
+
+## 🚨 9. Lack of Observability
+
+### **Issue**
+
+* No visibility into:
+  * Queue depth
+  * Processing time
+  * DB performance
+
+✅ **Problem:** Issues detected too late
+
+### ✅ **Solution**
+
+* Add monitoring:
+  * Prometheus + Grafana
+
+Track:
+
+* Queue backlog
+* Job latency
+* Webhook request rate
+* DB response times
+
+✅ **Benefit:** Faster debugging & proactive scaling
+
+***
+
+# ✅ Summary of Critical Risks
+
+❌ Webhook bottleneck (2 replicas only)  
+❌ Job backlog (100 pending jobs)  
+❌ DB performance degradation (50GB data)  
+❌ No queue-based decoupling  
+❌ No autoscaling or elasticity  
+❌ System-wide tight coupling  
+❌ No rate limiting  
+❌ Poor observability
+
+***
+
+# ✅ High-Level Improved Architecture
+
+```
+150 Git Repositories
+          ↓
+     Load Balancer
+          ↓
+Webhook Service (Auto-scaled)
+          ↓
+   Message Queue (Kafka/SQS)
+          ↓
+ Worker Pool (Auto-scaled)
+          ↓
+  Optimized DB + Cache (Redis)
+```
+
+***
+
+# 🎯 Final Insight
+
+✅ Core issue is **system imbalance**:
+
+```
+Event Input Rate (150 repos)
+        >>
+Processing Capacity (2 webhooks + limited workers)
+```
+
+### ✔ Fix by:
+
+* Scaling horizontally
+* Decoupling with queues
+* Optimizing DB
+* Adding caching & monitoring
+
+***
+
+If you want, I can convert this into a **P0/P1/P2 priority action plan** or a **whiteboard-style system design answer (perfect for interviews)** 🚀
